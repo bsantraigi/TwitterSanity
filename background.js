@@ -1,11 +1,22 @@
+console.log('Background script loaded!');
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('Background script received message:', request);
+  if (request.type === "test") {
+    sendResponse({ status: "background script working" });
+  }
+  return true;
+});
+
+
 let settings = null;
 
 async function loadSettings() {
   const defaults = {
     enabled: false,
     apiServer: 'http://localhost:8080',
-    modelName: 'meta-llama-3.1-8b-instruct',
-    prompt: `You are a content quality filter. Evaluate if the following tweet contains valuable information about books, events, non-incremental AI research, scientific news, or other substantive content. Respond with only "keep" or "remove".
+    modelName: 'llama-3.2-3b-instruct',
+    prompt: `You are a content quality filter. Evaluate if the following tweet contains valuable information about books, events, non-incremental AI research, scientific news, or other substantive content. Respond with only "keep" or "hide".
 
 Tweet: "{tweet}"
 
@@ -25,13 +36,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+
+function logEvaluation(tweetText, decision, error = null) {
+  const truncatedTweet = tweetText.slice(0, 50) + (tweetText.length > 50 ? '...' : '');
+  if (error) {
+    console.log(`🔴 Error evaluating tweet: "${truncatedTweet}"\nError: ${error}`);
+  } else {
+    shouldKeep = !decision.includes('hide');
+    console.log(`${shouldKeep ? '✅' : '❌'} Tweet "${truncatedTweet}" -> ${decision}`);
+  }
+}
+
 async function evaluateTweet(tweetText, sendResponse) {
   if (!settings.enabled) {
+    console.log('⚪ Filter disabled, keeping tweet');
     sendResponse({ shouldKeep: true });
     return;
   }
 
   const prompt = settings.prompt.replace('{tweet}', tweetText);
+  console.log(`🔄 Evaluating tweet with ${settings.modelName} at ${settings.apiServer}`);
 
   try {
     const response = await fetch(`${settings.apiServer}/v1/completions`, {
@@ -46,13 +70,16 @@ async function evaluateTweet(tweetText, sendResponse) {
         temperature: 0.1
       })
     });
-
     const data = await response.json();
     const decision = data.choices[0].text.trim().toLowerCase();
-    sendResponse({ shouldKeep: decision === 'keep' });
+    logEvaluation(tweetText, decision);
+    console.log('📤 Sending response:', data);
+    shouldKeep = !decision.includes('hide');
+    sendResponse({ shouldKeep: shouldKeep, response: data });
   } catch (error) {
-    console.error('Error calling LLM:', error);
-    sendResponse({ shouldKeep: true });
+    logEvaluation(tweetText, 'keep', error);
+    console.log('🔴 Error:', error);
+    sendResponse({ shouldKeep: true, error: error.message });
   }
 }
 

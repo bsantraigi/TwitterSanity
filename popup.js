@@ -1,3 +1,6 @@
+console.log('Popup script loaded!');
+
+
 document.addEventListener('DOMContentLoaded', async () => {
   const defaults = {
     enabled: false,
@@ -27,7 +30,7 @@ Decision:`
     updateStatus(enabled);
     // Notify content script of status change
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab.url.includes('twitter.com')) {
+    if (tab.url.includes('x.com')) {
       chrome.tabs.sendMessage(tab.id, { type: 'filterStatusChanged', enabled });
     }
   });
