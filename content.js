@@ -1,19 +1,4 @@
-console.log('Twitter Filter content script loaded!');
-
-// Add these basic event listeners
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('DOM Content Loaded in Twitter page');
-});
-
-window.addEventListener('load', () => {
-  console.log('Window fully loaded in Twitter page');
-});
-
-// Test message to background script
-chrome.runtime.sendMessage({ type: "test" }, response => {
-  console.log('Got response from background script:', response);
-});
-
+// content.js
 
 const TWEET_SELECTOR = 'article[data-testid="tweet"]';
 const processedTweets = new Set();
@@ -24,22 +9,32 @@ chrome.storage.local.get({ enabled: false }, (result) => {
   filterEnabled = result.enabled;
 });
 
+// Add CSS for blur effect
+const style = document.createElement('style');
+style.textContent = `
+  .tweet-blurred {
+    filter: blur(8px);
+    transition: filter 0.3s ease;
+  }
+  .tweet-blurred:hover {
+    filter: blur(0);
+  }
+`;
+document.head.appendChild(style);
+
 // Listen for filter status changes
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'filterStatusChanged') {
-    // show a popup
     console.log('Filter status changed:', request.enabled);
-
     filterEnabled = request.enabled;
-    // Show all tweets when filter is disabled
+    
+    // Remove blur from all tweets when filter is disabled
     if (!filterEnabled) {
       document.querySelectorAll(TWEET_SELECTOR).forEach(tweet => {
-        tweet.style.display = '';
+        tweet.classList.remove('tweet-blurred');
       });
     } else {
       // Reprocess visible tweets when filter is enabled
-      // add a incremental delay before calling processTweet, such that twitter doesn't block the extension
-      //   document.querySelectorAll(TWEET_SELECTOR).forEach(processTweet);
       let delay = 0;
       document.querySelectorAll(TWEET_SELECTOR).forEach(tweet => {
         setTimeout(() => processTweet(tweet), delay);
@@ -63,10 +58,10 @@ function processTweet(tweetElement) {
     { type: "evaluateTweet", text: tweetText },
     response => {
       console.log(`Raw response: ${JSON.stringify(response)}`);
-      console.log(`📥 Received response for tweet: ${response.shouldKeep ? 'keep' : 'hide'}`);
+      console.log(`📥 Received response for tweet: ${response.shouldKeep ? 'keep' : 'blur'}`);
       if (!response.shouldKeep) {
-        tweetElement.style.display = 'none';
-        console.log('🙈 Hidden tweet');
+        tweetElement.classList.add('tweet-blurred');
+        console.log('🌫️ Blurred tweet');
       }
     }
   );

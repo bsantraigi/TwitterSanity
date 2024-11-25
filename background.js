@@ -1,14 +1,3 @@
-console.log('Background script loaded!');
-
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('Background script received message:', request);
-  if (request.type === "test") {
-    sendResponse({ status: "background script working" });
-  }
-  return true;
-});
-
-
 let settings = null;
 
 async function loadSettings() {
