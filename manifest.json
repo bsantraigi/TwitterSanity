@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Twitter Content Filter",
+  "name": "Twitter Sanity (AI Filter for Twitter/X)",
   "version": "1.0",
   "permissions": ["scripting", "activeTab", "storage"],
   "host_permissions": ["https://x.com/*"],

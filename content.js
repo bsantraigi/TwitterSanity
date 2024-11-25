@@ -2,7 +2,7 @@ const TWEET_SELECTOR = 'article[data-testid="tweet"]';
 const processedTweets = new Set();
 const blurredTweetIds = new Set();
 let filterEnabled = false;
-const CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+const CACHE_EXPIRATION = 1 * 60 * 60 * 1000; // 1 hours in milliseconds
 
 // Load initial state
 chrome.storage.local.get({ enabled: false, evaluationCache: {} }, (result) => {
