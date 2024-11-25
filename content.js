@@ -2,9 +2,10 @@ const TWEET_SELECTOR = 'article[data-testid="tweet"]';
 const processedTweets = new Set();
 const blurredTweetIds = new Set();
 let filterEnabled = false;
+const CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 // Load initial state
-chrome.storage.local.get({ enabled: false }, (result) => {
+chrome.storage.local.get({ enabled: false, evaluationCache: {} }, (result) => {
   filterEnabled = result.enabled;
 });
 
@@ -35,9 +36,6 @@ function getTweetId(tweetElement) {
       tweetId = href?.split('/').pop();
     }
   }
-
-  // full log of what was found where with emoji!
-  console.log(`🔍 Found tweet ID ${tweetId} in tweet element`);
   
   return tweetId;
 }
@@ -48,6 +46,51 @@ function applyBlur(tweetElement) {
   if (tweetId && blurredTweetIds.has(tweetId)) {
     tweetElement.setAttribute('data-blur-state', 'blurred');
   }
+}
+
+// Cache management functions
+function getCacheKey(text) {
+  // Create a simple hash of the tweet text to use as cache key
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return `tweet_${hash}`;
+}
+
+async function getFromCache(text) {
+  const cacheKey = getCacheKey(text);
+  const result = await chrome.storage.local.get({ evaluationCache: {} });
+  const cache = result.evaluationCache;
+  
+  if (cache[cacheKey]) {
+    const { timestamp, shouldKeep } = cache[cacheKey];
+    if (Date.now() - timestamp < CACHE_EXPIRATION) {
+      console.log('🎯 Cache hit for tweet');
+      return shouldKeep;
+    } else {
+      // Remove expired cache entry
+      delete cache[cacheKey];
+      await chrome.storage.local.set({ evaluationCache: cache });
+    }
+  }
+  return null;
+}
+
+async function saveToCache(text, shouldKeep) {
+  const cacheKey = getCacheKey(text);
+  const result = await chrome.storage.local.get({ evaluationCache: {} });
+  const cache = result.evaluationCache;
+  
+  cache[cacheKey] = {
+    timestamp: Date.now(),
+    shouldKeep
+  };
+  
+  await chrome.storage.local.set({ evaluationCache: cache });
+  console.log('💾 Cached evaluation result');
 }
 
 // Listen for filter status changes
@@ -64,12 +107,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       blurredTweetIds.clear();
     } else {
       // Reprocess visible tweets when filter is enabled
-      document.querySelectorAll(TWEET_SELECTOR).forEach(processTweet);
+      let delay = 0;
+      document.querySelectorAll(TWEET_SELECTOR).forEach(tweet => {
+        setTimeout(() => processTweet(tweet), delay);
+        delay += 500;
+      });
     }
   }
 });
 
-function processTweet(tweetElement) {
+async function processTweet(tweetElement) {
   if (!filterEnabled) return;
   
   const tweetId = getTweetId(tweetElement);
@@ -88,11 +135,27 @@ function processTweet(tweetElement) {
   
   console.log(`📨 Processing tweet: "${tweetText.slice(0, 50)}..."`);
   
+  // Check cache first
+  const cachedResult = await getFromCache(tweetText);
+  if (cachedResult !== null) {
+    if (!cachedResult) {
+      blurredTweetIds.add(tweetId);
+      tweetElement.setAttribute('data-blur-state', 'blurred');
+      console.log('🌫️ Blurred tweet (from cache)', tweetId);
+    }
+    return;
+  }
+  
+  // If not in cache, evaluate tweet
   chrome.runtime.sendMessage(
     { type: "evaluateTweet", text: tweetText },
-    response => {
+    async response => {
       console.log(`Raw response: ${JSON.stringify(response)}`);
       console.log(`📥 Received response for tweet: ${response.shouldKeep ? 'keep' : 'blur'}`);
+      
+      // Cache the result
+      await saveToCache(tweetText, response.shouldKeep);
+      
       if (!response.shouldKeep) {
         blurredTweetIds.add(tweetId);
         tweetElement.setAttribute('data-blur-state', 'blurred');
